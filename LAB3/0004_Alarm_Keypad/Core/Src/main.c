@@ -1,3 +1,4 @@
+
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
@@ -18,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -50,9 +52,12 @@ I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
 
+osThreadId myTask02Handle;
+osThreadId myTask03Handle;
+osMessageQId myQueue01Handle;
 /* USER CODE BEGIN PV */
 extern char key;
-char hold[7];
+char hold[4];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,6 +65,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
+void StartTask02(void const * argument);
+void StartTask03(void const * argument);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -104,68 +112,67 @@ int main(void)
     SSD1306_Init();
     SSD1306_GotoXY (0,0);
     //SSD1306_Puts ("Voltage:", &Font_11x18, 1);
-    SSD1306_Puts ("Enter Code:", &Font_11x18, 1);
+    SSD1306_Puts("Not Armed!", &Font_11x18, 1);
     SSD1306_GotoXY (0, 30);
+    SSD1306_Puts ("Code:", &Font_11x18, 1);
     SSD1306_UpdateScreen();
     SSD1306_UpdateScreen();
     HAL_Delay (500);
 
   /* USER CODE END 2 */
 
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* Create the queue(s) */
+  /* definition and creation of myQueue01 */
+  osMessageQDef(myQueue01, 16, char);
+  myQueue01Handle = osMessageCreate(osMessageQ(myQueue01), NULL);
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
+
+  /* definition and creation of myTask02 */
+  osThreadDef(myTask02, StartTask02, osPriorityAboveNormal, 0, 128);
+  myTask02Handle = osThreadCreate(osThread(myTask02), NULL);
+
+  /* definition and creation of myTask03 */
+  osThreadDef(myTask03, StartTask03, osPriorityNormal, 0, 128);
+  myTask03Handle = osThreadCreate(osThread(myTask03), NULL);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* Start scheduler */
+  osKernelStart();
+
+  /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  int index = 0;
-  bool systemArmed = false;
   while (1)
   {
-    /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-	/* D10 to D7 as input pins for row 0 to row 3. D6 to D3 as output for column pins C1 to C3*/
-	  key = Get_Key();
-	  if (key != '\0' && index < 6) {
-	      hold[index] = key;
-	      index++;
-	    }
-	  hold[index] = '\0';
-
-	  char display[7];
-	    for (int i = 0; i < index; i++) {
-	      display[i] = '*';
-	    }
-	    display[index] = '\0';
-
-	    HAL_UART_Transmit(&huart2, (uint8_t *)display, strlen(display), 100);
-	    SSD1306_GotoXY (0, 30);
-	    SSD1306_UpdateScreen();
-	    SSD1306_Puts (display, &Font_11x18, 1);
-	    SSD1306_UpdateScreen();
-
-
-	      // Armer ou désarmer le système si le bon code est entré
-	      if (strcmp(hold, "111111") == 0) {
-	        systemArmed = !systemArmed;
-	        // Réinitialiser le code et l'index
-	        memset(hold, 0, sizeof(hold));
-//	        SSD1306_Clear();
-	        index = 0;
-	      }
-	      // Afficher l'état du système
-	      	      SSD1306_GotoXY (0, 50);
-	      	      SSD1306_UpdateScreen();
-	      	      if (systemArmed) {
-	      	        SSD1306_Puts ("ARMÉ", &Font_11x18, 1);
-	      	        // Allumer la LED rouge
-	      	      } else {
-	      	        SSD1306_Puts ("NON ARMÉ", &Font_11x18, 1);
-	      	        // Allumer la LED verte
-	      	      }
-	      	      SSD1306_UpdateScreen();
-
-	      HAL_Delay (500);
   }
   /* USER CODE END 3 */
 }
+
+
+
+
 
 /**
   * @brief System Clock Configuration
@@ -301,11 +308,26 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6|GPIO_PIN_7, GPIO_PIN_RESET);
+
+
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, KC0_Pin|KC3_Pin|KC1_Pin|KC2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : PA5 */
   GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -343,6 +365,121 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
+
+
+/* USER CODE BEGIN Header_StartTask02 */
+/**
+* @brief Function implementing the myTask02 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTask02 */
+void StartTask02(void const * argument)
+{
+  /* USER CODE BEGIN StartTask02 */
+  /* Infinite loop */
+	  char receivedKey;
+	  char enteredCode[7] = {0}; // Array to store the entered code, assuming max length + 1 for null terminator
+	  uint8_t codeLength = 0; // To track the number of entered characters
+	  const uint8_t maxCodeLength = 6; // Adjust based on your requirements
+	  const char correctCode[7] = "000000"; // Example of a correct code for comparison
+	  int armed = 0;
+
+	  for(;;) {
+
+		if(armed) {
+	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, SET);
+	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, RESET);
+	          osDelay(2000);
+		} else {
+	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, SET);
+	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, RESET);
+		}
+
+	    if (xQueueReceive(myQueue01Handle, &receivedKey, portMAX_DELAY) == pdPASS) {
+	      if (receivedKey == '#' && codeLength == maxCodeLength) { // Enter/confirm key or max length reached
+	        // Check if the entered code is correct
+	        if (strncmp(enteredCode, correctCode, maxCodeLength) == 0) {
+	          // Code is correct
+	          SSD1306_Clear();
+	          SSD1306_GotoXY(0, 0);
+	          SSD1306_Puts("Success!", &Font_11x18, 1);
+	          if (armed) {
+	        	  armed = 0;
+	          } else {
+	        	  armed = 1;
+	          }
+	        } else {
+	          // Code is incorrect
+	          SSD1306_Clear();
+	          SSD1306_GotoXY(0, 0);
+	          SSD1306_Puts("Failed!", &Font_11x18, 1);
+	        }
+	        SSD1306_UpdateScreen();
+	        HAL_Delay(2000); // Display message for 2 seconds
+
+	        // Reset display and code length for next entry
+	        SSD1306_Clear();
+	        SSD1306_GotoXY (0, 0);
+	        if (armed) {
+		        SSD1306_Puts("Armed!", &Font_11x18, 1);
+
+	        } else {
+		        SSD1306_Puts("Not Armed!", &Font_11x18, 1);
+
+	        }
+	        SSD1306_GotoXY (0, 30); // Adjust Y position based on your font size
+	        SSD1306_Puts("Code:", &Font_11x18, 1);
+	        SSD1306_UpdateScreen();
+	        memset(enteredCode, 0, sizeof(enteredCode)); // Clear the entered code
+	        codeLength = 0;
+	      } else {
+	        // Add received key to the entered code and update display with an additional asterisk
+	        if (codeLength < maxCodeLength) { // Prevent buffer overflow
+	          enteredCode[codeLength] = receivedKey; // Store the received key
+	          //SSD1306_GotoXY ((codeLength * 5), 30); // Adjust spacing based on font size
+	          SSD1306_Puts("*", &Font_11x18, 1);
+	          SSD1306_UpdateScreen();
+	          codeLength++;
+	          // Might  wait here? HAL_Delay (500);
+	        } else {
+	        	printf("Error: Max Code Length Reached!\r\n");
+	        }
+	      }
+	    }
+	  }
+
+  /* USER CODE END StartTask02 */
+}
+
+
+void StartTask03(void const * argument)
+{
+	  const TickType_t xDelay = 20 / portTICK_PERIOD_MS; // Debounce delay
+	  char keyToSend; // To hold the key to be sent
+
+	  for(;;) {
+	    keyToSend = Get_Key(); // Assume Get_Key() is debounced and returns '\0' if no key is pressed
+	    if (keyToSend != '\0') { // Check if a key is pressed
+	      // Send the key press to the display task
+	      if (xQueueSend(myQueue01Handle, &keyToSend, portMAX_DELAY) != pdPASS) {
+	    	  printf("Error: Data couldn't be sent from task 2\r\n");
+	      }
+	    }
+
+	    vTaskDelay(xDelay); // Wait for the next cycle
+	  }
+  /* USER CODE END StartTask02 */
+}
+
+/* USER CODE BEGIN Header_StartTask03 */
+/**
+* @brief Function implementing the myTask03 thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTask03 */
+
 
 /**
   * @brief  Period elapsed callback in non blocking mode
