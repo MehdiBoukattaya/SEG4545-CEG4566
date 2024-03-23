@@ -58,6 +58,8 @@ osMessageQId myQueue01Handle;
 /* USER CODE BEGIN PV */
 extern char key;
 char hold[4];
+char lastIncorrectCode[7] = {0}; // Pour stocker le dernier code incorrect entré
+uint8_t attemptCounter = 0; // Pour compter le nombre de tentatives avec le même code incorrect
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -378,76 +380,86 @@ void StartTask02(void const * argument)
 {
   /* USER CODE BEGIN StartTask02 */
   /* Infinite loop */
-	  char receivedKey;
-	  char enteredCode[7] = {0}; // Array to store the entered code, assuming max length + 1 for null terminator
-	  uint8_t codeLength = 0; // To track the number of entered characters
-	  const uint8_t maxCodeLength = 6; // Adjust based on your requirements
-	  const char correctCode[7] = "000000"; // Example of a correct code for comparison
-	  int armed = 0;
+    char receivedKey;
+    char enteredCode[7] = {0}; // Array to store the entered code, assuming max length + 1 for null terminator
+    uint8_t codeLength = 0; // To track the number of entered characters
+    const uint8_t maxCodeLength = 4; // Adjust based on your requirements
+    char configuredCode[7] = {0}; // Array to store the configured code
+    int armed = 0;
+    int codeConfigured = 0; // Flag to indicate if the code has been configured
 
-	  for(;;) {
+    for(;;) {
 
-		if(armed) {
-	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, SET);
-	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, RESET);
-	          osDelay(2000);
-		} else {
-	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, SET);
-	          HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, RESET);
-		}
+    if(armed) {
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, SET);
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, RESET);
+            osDelay(2000);
+    } else {
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, SET);
+            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, RESET);
+    }
 
-	    if (xQueueReceive(myQueue01Handle, &receivedKey, portMAX_DELAY) == pdPASS) {
-	      if (receivedKey == '#' && codeLength == maxCodeLength) { // Enter/confirm key or max length reached
-	        // Check if the entered code is correct
-	        if (strncmp(enteredCode, correctCode, maxCodeLength) == 0) {
-	          // Code is correct
-	          SSD1306_Clear();
-	          SSD1306_GotoXY(0, 0);
-	          SSD1306_Puts("Success!", &Font_11x18, 1);
-	          if (armed) {
-	        	  armed = 0;
-	          } else {
-	        	  armed = 1;
-	          }
-	        } else {
-	          // Code is incorrect
-	          SSD1306_Clear();
-	          SSD1306_GotoXY(0, 0);
-	          SSD1306_Puts("Failed!", &Font_11x18, 1);
-	        }
-	        SSD1306_UpdateScreen();
-	        HAL_Delay(2000); // Display message for 2 seconds
+      if (xQueueReceive(myQueue01Handle, &receivedKey, portMAX_DELAY) == pdPASS) {
+        if (receivedKey == '#' && codeLength == maxCodeLength) { // Enter/confirm key or max length reached
+          if (codeConfigured) {
+            // Check if the entered code is correct
+            if (strncmp(enteredCode, configuredCode, maxCodeLength) == 0) {
+              // Code is correct
+              SSD1306_Clear();
+              SSD1306_GotoXY(0, 0);
+              SSD1306_Puts("Success!", &Font_11x18, 1);
+              if (armed) {
+                armed = 0;
+              } else {
+                armed = 1;
+              }
+            } else {
+              // Code is incorrect
+              SSD1306_Clear();
+              SSD1306_GotoXY(0, 0);
+              SSD1306_Puts("Failed!", &Font_11x18, 1);
+            }
+            SSD1306_UpdateScreen();
+            HAL_Delay(2000); // Display message for 2 seconds
+          } else {
+            // Configure the code
+            memcpy(configuredCode, enteredCode, sizeof(enteredCode));
+            codeConfigured = 1;
+            SSD1306_Clear();
+            SSD1306_GotoXY(0, 0);
+            SSD1306_Puts("Code Configured!", &Font_11x18, 1);
+            SSD1306_UpdateScreen();
+            HAL_Delay(2000); // Display message for 2 seconds
+          }
 
-	        // Reset display and code length for next entry
-	        SSD1306_Clear();
-	        SSD1306_GotoXY (0, 0);
-	        if (armed) {
-		        SSD1306_Puts("Armed!", &Font_11x18, 1);
-
-	        } else {
-		        SSD1306_Puts("Not Armed!", &Font_11x18, 1);
-
-	        }
-	        SSD1306_GotoXY (0, 30); // Adjust Y position based on your font size
-	        SSD1306_Puts("Code:", &Font_11x18, 1);
-	        SSD1306_UpdateScreen();
-	        memset(enteredCode, 0, sizeof(enteredCode)); // Clear the entered code
-	        codeLength = 0;
-	      } else {
-	        // Add received key to the entered code and update display with an additional asterisk
-	        if (codeLength < maxCodeLength) { // Prevent buffer overflow
-	          enteredCode[codeLength] = receivedKey; // Store the received key
-	          //SSD1306_GotoXY ((codeLength * 5), 30); // Adjust spacing based on font size
-	          SSD1306_Puts("*", &Font_11x18, 1);
-	          SSD1306_UpdateScreen();
-	          codeLength++;
-	          // Might  wait here? HAL_Delay (500);
-	        } else {
-	        	printf("Error: Max Code Length Reached!\r\n");
-	        }
-	      }
-	    }
-	  }
+          // Reset display and code length for next entry
+          SSD1306_Clear();
+          SSD1306_GotoXY (0, 0);
+          if (armed) {
+            SSD1306_Puts("Armed!", &Font_11x18, 1);
+          } else {
+            SSD1306_Puts("Not Armed!", &Font_11x18, 1);
+          }
+          SSD1306_GotoXY (0, 30); // Adjust Y position based on your font size
+          SSD1306_Puts("Code:", &Font_11x18, 1);
+          SSD1306_UpdateScreen();
+          memset(enteredCode, 0, sizeof(enteredCode)); // Clear the entered code
+          codeLength = 0;
+        } else {
+          // Add received key to the entered code and update display with an additional asterisk
+          if (codeLength < maxCodeLength) { // Prevent buffer overflow
+            enteredCode[codeLength] = receivedKey; // Store the received key
+            //SSD1306_GotoXY ((codeLength * 5), 30); // Adjust spacing based on font size
+            SSD1306_Puts("*", &Font_11x18, 1);
+            SSD1306_UpdateScreen();
+            codeLength++;
+            // Might  wait here? HAL_Delay (500);
+          } else {
+            printf("Error: Max Code Length Reached!\r\n");
+          }
+        }
+      }
+    }
 
   /* USER CODE END StartTask02 */
 }
@@ -471,6 +483,8 @@ void StartTask03(void const * argument)
 	  }
   /* USER CODE END StartTask02 */
 }
+
+
 
 /* USER CODE BEGIN Header_StartTask03 */
 /**
